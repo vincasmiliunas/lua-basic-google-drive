@@ -51,10 +51,10 @@ function M:list(params)
 	return self:request(url)
 end
 
-function M:get(params, fileId)
+function M:get(params, fileId, write)
 	local url = self:buildUrl(params, self.config.endpoint .. 'files/' .. fileId)
 	local data = self:request(url)
-	local content, code = self.oauth2:request(data.downloadUrl)
+	local content, code = self.oauth2:request(data.downloadUrl, nil, nil, nil, {write = write})
 	if code ~= 200 then error(self.gdUtils:formatHttpCodeError(code)) end
 	return content, data
 end
@@ -64,14 +64,19 @@ function M:insert(params, file)
 	return self:request(url, JSON.encode(file), {'Content-Type: application/json'})
 end
 
-function M:upload(params, file, blob)
+function M:upload(params, file, source)
 	local url = self:buildUrl(params, self.config.endpoint_upload .. 'files')
 	url.query.uploadType = 'multipart'
 	local data = {
 		{data = JSON.encode(file), type = 'application/json'},
-		{data = blob, type = file.mimeType},
+		{data = source, type = file.mimeType},
 	}
-	local content, contentType = self.gdUtils:buildMultipartRelated(data)
+	local content, contentType
+	if type(source) == 'function' or type(source) == 'thread' then
+		content, contentType = self.gdUtils:streamMultipartRelated(data)
+	else
+		content, contentType = self.gdUtils:buildMultipartRelated(data)
+	end
 	return self:request(url, content, {'Content-Type: ' .. contentType})
 end
 
