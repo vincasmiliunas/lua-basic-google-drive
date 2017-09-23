@@ -35,4 +35,38 @@ function M:buildMultipartRelated(parts)
 	return table.concat(result), 'multipart/related; boundary=' .. boundary
 end
 
+function M:streamMultipartRelated(parts)
+	local boundary = self:generateBoundary()
+	local worker = coroutine.create(function()
+		for _,part in pairs(parts) do
+			coroutine.yield(
+				'--' .. boundary .. '\r\n' ..
+				'Content-Type: ' .. part.type .. '\r\n' ..
+				'\r\n'
+			)
+			if type(part.data) == 'string' then
+				coroutine.yield(part.data)
+			elseif type(part.data) == 'function' then
+				while true do
+					local ret = part.data()
+					if not ret or #ret == 0 then break end
+					coroutine.yield(ret)
+				end
+			elseif type(part.data) == 'thread' then
+				while true do
+					local ok, ret = coroutine.resume(part.data)
+					if not ok then error(ret) end
+					if not ret or #ret == 0 then break end
+					coroutine.yield(ret)
+				end
+			else
+				error(string.format('Invalid data format %s', type(part.data)))
+			end
+			coroutine.yield('\r\n')
+		end
+		coroutine.yield('--' .. boundary .. '--' .. '\r\n')
+	end)
+	return worker, 'multipart/related; boundary=' .. boundary
+end
+
 return M
